@@ -6,6 +6,7 @@ Makefile.global
 Makefile.objects
 acinclude.m4
 aclocal.m4
+autom4te.cache/
 build/
 config.cache
 config.guess
@@ -23,8 +24,16 @@ ltmain.sh
 missing
 mkinstalldirs
 run-tests.php
+tmp-php.ini
 *.loT
 .libs/
 modules/
 *.la
 *.lo
+*~
+tests/*.log
+tests/*.sh
+tests/*.php
+tests/*.diff
+tests/*.exp
+tests/*.out

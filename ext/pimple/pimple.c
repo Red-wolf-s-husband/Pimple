@@ -47,50 +47,54 @@ static zend_class_entry *pimple_serviceprovider_ce;
 static zend_object_handlers pimple_closure_object_handlers;
 static zend_internal_function pimple_closure_invoker_function;
 
-#define FETCH_DIM_HANDLERS_VARS 	pimple_object *pimple_obj = NULL; \
-									ulong index; \
-									pimple_obj = (pimple_object *)zend_object_store_get_object(object TSRMLS_CC); \
+static inline void pimple_object_handle_inheritance_object_handlers(zend_class_entry *ce TSRMLS_DC)
+{
+	zend_function *function    = NULL;
 
-#define PIMPLE_OBJECT_HANDLE_INHERITANCE_OBJECT_HANDLERS	do { \
-	if (ce != pimple_ce) { \
-		zend_hash_find(&ce->function_table, ZEND_STRS("offsetget"), (void **)&function); \
-		if (function->common.scope != ce) { /* if the function is not defined in this actual class */ \
-			pimple_object_handlers.read_dimension = pimple_object_read_dimension; /* then overwrite the handler to use custom one */ \
-		} \
-		zend_hash_find(&ce->function_table, ZEND_STRS("offsetset"), (void **)&function); \
-		if (function->common.scope != ce) { \
-			pimple_object_handlers.write_dimension = pimple_object_write_dimension; \
-		} \
-		zend_hash_find(&ce->function_table, ZEND_STRS("offsetexists"), (void **)&function); \
-		if (function->common.scope != ce) { \
-			pimple_object_handlers.has_dimension = pimple_object_has_dimension; \
-		} \
-		zend_hash_find(&ce->function_table, ZEND_STRS("offsetunset"), (void **)&function); \
-		if (function->common.scope != ce) { \
-			pimple_object_handlers.unset_dimension = pimple_object_unset_dimension; \
-		} \
-	} else { \
-		pimple_object_handlers.read_dimension = pimple_object_read_dimension; \
-		pimple_object_handlers.write_dimension = pimple_object_write_dimension; \
-		pimple_object_handlers.has_dimension = pimple_object_has_dimension; \
-		pimple_object_handlers.unset_dimension = pimple_object_unset_dimension; \
-	}\
-											} while(0);
+	if (ce != pimple_ce) {
+		zend_hash_find(&ce->function_table, ZEND_STRS("offsetget"), (void **)&function);
+		if (function->common.scope != ce) { /* if the function is not defined in this actual class */
+			pimple_object_handlers.read_dimension = pimple_object_read_dimension; /* then overwrite the handler to use custom one */
+		}
+		zend_hash_find(&ce->function_table, ZEND_STRS("offsetset"), (void **)&function);
+		if (function->common.scope != ce) {
+			pimple_object_handlers.write_dimension = pimple_object_write_dimension;
+		}
+		zend_hash_find(&ce->function_table, ZEND_STRS("offsetexists"), (void **)&function);
+		if (function->common.scope != ce) {
+			pimple_object_handlers.has_dimension = pimple_object_has_dimension;
+		}
+		zend_hash_find(&ce->function_table, ZEND_STRS("offsetunset"), (void **)&function);
+		if (function->common.scope != ce) {
+			pimple_object_handlers.unset_dimension = pimple_object_unset_dimension;
+		}
+	} else {
+		pimple_object_handlers.read_dimension = pimple_object_read_dimension;
+		pimple_object_handlers.write_dimension = pimple_object_write_dimension;
+		pimple_object_handlers.has_dimension = pimple_object_has_dimension;
+		pimple_object_handlers.unset_dimension = pimple_object_unset_dimension;
+	}
+}
 
-#define PIMPLE_CALL_CB	do { \
-			zend_fcall_info_argn(&fci TSRMLS_CC, 1, &object); \
-			fci.size           = sizeof(fci); \
-			fci.object_ptr     = retval->fcc.object_ptr; \
-			fci.function_name  = retval->value; \
-			fci.no_separation  = 1; \
-			fci.retval_ptr_ptr = &retval_ptr_ptr; \
-\
-			zend_call_function(&fci, &retval->fcc TSRMLS_CC); \
-			efree(fci.params); \
-			if (EG(exception)) { \
-				return EG(uninitialized_zval_ptr); \
-			} \
-						} while(0);
+static inline zval *pimple_call_cb(zval *object, pimple_bucket_value *retval TSRMLS_DC)
+{
+	zend_fcall_info fci = {0};
+	zval *retval_ptr_ptr = NULL;
+
+	zend_fcall_info_argn(&fci TSRMLS_CC, 1, &object);
+	fci.size           = sizeof(fci);
+	fci.object_ptr     = retval->fcc.object_ptr;
+	fci.function_name  = retval->value;
+	fci.no_separation  = 1;
+	fci.retval_ptr_ptr = &retval_ptr_ptr;
+
+	zend_call_function(&fci, &retval->fcc TSRMLS_CC);
+	efree(fci.params);
+	if (EG(exception)) {
+		return NULL;
+	}
+	return retval_ptr_ptr;
+}
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo___construct, 0, 0, 0)
 ZEND_ARG_ARRAY_INFO(0, value, 0)
@@ -163,6 +167,16 @@ static const zend_function_entry pimple_serviceprovider_iface_ce_functions[] = {
 	PHP_FE_END
 };
 
+static inline pimple_object *z_pimple_p(zval * object TSRMLS_DC)
+{
+	return (pimple_object *)zend_object_store_get_object(object TSRMLS_CC);
+}
+
+static inline pimple_closure_object *z_pimple_closure_p(zval * object TSRMLS_DC)
+{
+	return (pimple_closure_object *)zend_object_store_get_object(object TSRMLS_CC);
+}
+
 static void pimple_closure_free_object_storage(pimple_closure_object *obj TSRMLS_DC)
 {
 	zend_object_std_dtor(&obj->zobj TSRMLS_CC);
@@ -228,10 +242,10 @@ static zend_object_value pimple_object_create(zend_class_entry *ce TSRMLS_DC)
 	pimple_object *pimple_obj  = NULL;
 	zend_function *function    = NULL;
 
-	pimple_obj = emalloc(sizeof(pimple_object));
+	pimple_obj = ecalloc(1, sizeof(pimple_object));
 	ZEND_OBJ_INIT(&pimple_obj->zobj, ce);
 
-	PIMPLE_OBJECT_HANDLE_INHERITANCE_OBJECT_HANDLERS
+	pimple_object_handle_inheritance_object_handlers(ce TSRMLS_CC);
 
 	retval.handlers = &pimple_object_handlers;
 	retval.handle   = zend_objects_store_put(pimple_obj, (zend_objects_store_dtor_t) zend_objects_destroy_object, (zend_objects_free_object_storage_t) pimple_free_object_storage, NULL TSRMLS_CC);
@@ -245,7 +259,9 @@ static zend_object_value pimple_object_create(zend_class_entry *ce TSRMLS_DC)
 
 static void pimple_object_write_dimension(zval *object, zval *offset, zval *value TSRMLS_DC)
 {
-	FETCH_DIM_HANDLERS_VARS
+	pimple_object *pimple_obj = NULL;
+	ulong index;
+	pimple_obj = z_pimple_p(object TSRMLS_CC);
 
 	pimple_bucket_value pimple_value = {0}, *found_value = NULL;
 	ulong hash;
@@ -305,7 +321,9 @@ static void pimple_object_write_dimension(zval *object, zval *offset, zval *valu
 
 static void pimple_object_unset_dimension(zval *object, zval *offset TSRMLS_DC)
 {
-	FETCH_DIM_HANDLERS_VARS
+	pimple_object *pimple_obj = NULL;
+	ulong index;
+	pimple_obj = z_pimple_p(object TSRMLS_CC);
 
 	switch (Z_TYPE_P(offset)) {
 	case IS_STRING:
@@ -332,7 +350,9 @@ static void pimple_object_unset_dimension(zval *object, zval *offset TSRMLS_DC)
 
 static int pimple_object_has_dimension(zval *object, zval *offset, int check_empty TSRMLS_DC)
 {
-	FETCH_DIM_HANDLERS_VARS
+	pimple_object *pimple_obj = NULL;
+	ulong index;
+	pimple_obj = z_pimple_p(object TSRMLS_CC);
 
 	pimple_bucket_value *retval = NULL;
 
@@ -376,7 +396,9 @@ static int pimple_object_has_dimension(zval *object, zval *offset, int check_emp
 
 static zval *pimple_object_read_dimension(zval *object, zval *offset, int type TSRMLS_DC)
 {
-	FETCH_DIM_HANDLERS_VARS
+	pimple_object *pimple_obj = NULL;
+	ulong index;
+	pimple_obj = z_pimple_p(object TSRMLS_CC);
 
 	pimple_bucket_value *retval = NULL;
 	zend_fcall_info fci         = {0};
@@ -420,7 +442,10 @@ static zval *pimple_object_read_dimension(zval *object, zval *offset, int type T
 
 	if (zend_hash_index_exists(&pimple_obj->factories, retval->handle_num)) {
 		/* Service is a factory, call it everytime and never cache its result */
-		PIMPLE_CALL_CB
+		retval_ptr_ptr = pimple_call_cb(object, retval TSRMLS_CC);
+		if( retval_ptr_ptr == NULL ) {
+			return EG(uninitialized_zval_ptr);
+		}
 		Z_DELREF_P(retval_ptr_ptr); /* fetch dim addr will increment refcount */
 		return retval_ptr_ptr;
 	}
@@ -433,7 +458,10 @@ static zval *pimple_object_read_dimension(zval *object, zval *offset, int type T
 	ALLOC_INIT_ZVAL(retval->raw);
 	MAKE_COPY_ZVAL(&retval->value, retval->raw);
 
-	PIMPLE_CALL_CB
+	retval_ptr_ptr = pimple_call_cb(object, retval TSRMLS_CC);
+	if( retval_ptr_ptr == NULL ) {
+		return EG(uninitialized_zval_ptr);
+	}
 
 	retval->initialized = 1;
 	zval_ptr_dtor(&retval->value);
@@ -499,7 +527,7 @@ PHP_METHOD(Pimple, protect)
 	}
 
 	pimple_zval_to_pimpleval(protected, &bucket TSRMLS_CC);
-	pobj = (pimple_object *)zend_object_store_get_object(getThis() TSRMLS_CC);
+	pobj = z_pimple_p(getThis() TSRMLS_CC);
 
 	if (zend_hash_index_update(&pobj->protected, bucket.handle_num, (void *)&bucket, sizeof(pimple_bucket_value), NULL) == SUCCESS) {
 		Z_ADDREF_P(protected);
@@ -521,7 +549,7 @@ PHP_METHOD(Pimple, raw)
 		return;
 	}
 
-	pobj = zend_object_store_get_object(getThis() TSRMLS_CC);
+	pobj = z_pimple_p(getThis() TSRMLS_CC);
 
 	switch (Z_TYPE_P(offset)) {
 		case IS_STRING:
@@ -556,9 +584,12 @@ PHP_METHOD(Pimple, raw)
 
 PHP_METHOD(Pimple, extend)
 {
-	zval *offset = NULL, *callable = NULL, *pimple_closure_obj = NULL;
-	pimple_bucket_value bucket = {0}, *value = NULL;
-	pimple_object *pobj          = NULL;
+	zval *offset = NULL;
+	zval *callable = NULL;
+	zval *pimple_closure_obj = NULL;
+	pimple_bucket_value bucket = {0};
+	pimple_bucket_value *value = NULL;
+	pimple_object *pobj = NULL;
 	pimple_closure_object *pcobj = NULL;
 	ulong index;
 
@@ -566,7 +597,7 @@ PHP_METHOD(Pimple, extend)
 		return;
 	}
 
-	pobj = zend_object_store_get_object(getThis() TSRMLS_CC);
+	pobj = z_pimple_p(getThis() TSRMLS_CC);
 
 	switch (Z_TYPE_P(offset)) {
 		case IS_STRING:
@@ -611,7 +642,7 @@ PHP_METHOD(Pimple, extend)
 	ALLOC_INIT_ZVAL(pimple_closure_obj);
 	object_init_ex(pimple_closure_obj, pimple_closure_ce);
 
-	pcobj = zend_object_store_get_object(pimple_closure_obj TSRMLS_CC);
+	pcobj = z_pimple_closure_p(pimple_closure_obj TSRMLS_CC);
 	pcobj->callable = callable;
 	pcobj->factory  = value->value;
 	Z_ADDREF_P(callable);
@@ -643,7 +674,7 @@ PHP_METHOD(Pimple, keys)
 		return;
 	}
 
-	pobj = zend_object_store_get_object(getThis() TSRMLS_CC);
+	pobj = z_pimple_p(getThis() TSRMLS_CC);
 	array_init_size(return_value, zend_hash_num_elements(&pobj->values));
 
 	zend_hash_internal_pointer_reset_ex(&pobj->values, &pos);
@@ -660,7 +691,7 @@ PHP_METHOD(Pimple, keys)
 				zend_hash_next_index_insert(Z_ARRVAL_P(return_value), &endval, sizeof(zval *), NULL);
 			break;
 		}
-	zend_hash_move_forward_ex(&pobj->values, &pos);
+		zend_hash_move_forward_ex(&pobj->values, &pos);
 	}
 }
 
@@ -681,7 +712,7 @@ PHP_METHOD(Pimple, factory)
 	}
 
 	pimple_zval_to_pimpleval(factory, &bucket TSRMLS_CC);
-	pobj = (pimple_object *)zend_object_store_get_object(getThis() TSRMLS_CC);
+	pobj = z_pimple_p(getThis() TSRMLS_CC);
 
 	if (zend_hash_index_update(&pobj->factories, bucket.handle_num, (void *)&bucket, sizeof(pimple_bucket_value), NULL) == SUCCESS) {
 		Z_ADDREF_P(factory);
@@ -788,14 +819,14 @@ PHP_METHOD(Pimple, __construct)
 
 	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(values), &pos);
 	while (zend_hash_has_more_elements_ex(Z_ARRVAL_P(values), &pos) == SUCCESS) {
-			zend_hash_get_current_data_ex(Z_ARRVAL_P(values), (void **)&pData, &pos);
-			zend_hash_get_current_key_ex(Z_ARRVAL_P(values), &str_index, &str_length, &num_index, 0, &pos);
-			INIT_ZVAL(offset);
-			if (zend_hash_get_current_key_type_ex(Z_ARRVAL_P(values), &pos) == HASH_KEY_IS_LONG) {
-				ZVAL_LONG(&offset, num_index);
-			} else {
-				ZVAL_STRINGL(&offset, str_index, (str_length - 1), 0);
-			}
+		zend_hash_get_current_data_ex(Z_ARRVAL_P(values), (void **)&pData, &pos);
+		zend_hash_get_current_key_ex(Z_ARRVAL_P(values), &str_index, &str_length, &num_index, 0, &pos);
+		INIT_ZVAL(offset);
+		if (zend_hash_get_current_key_type_ex(Z_ARRVAL_P(values), &pos) == HASH_KEY_IS_LONG) {
+			ZVAL_LONG(&offset, num_index);
+		} else {
+			ZVAL_STRINGL(&offset, str_index, (str_length - 1), 0);
+		}
 		pimple_object_write_dimension(getThis(), &offset, *pData TSRMLS_CC);
 		zend_hash_move_forward_ex(Z_ARRVAL_P(values), &pos);
 	}
@@ -812,15 +843,17 @@ PHP_METHOD(Pimple, __construct)
 PHP_METHOD(PimpleClosure, invoker)
 {
 	pimple_closure_object *pcobj = NULL;
-	zval *arg = NULL, *retval = NULL, *newretval = NULL;
-	zend_fcall_info fci        = {0};
+	zval *arg = NULL;
+	zval *retval = NULL;
+	zval *newretval = NULL;
+	zend_fcall_info fci = {0};
 	zval **args[2];
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &arg) == FAILURE) {
 		return;
 	}
 
-	pcobj = zend_object_store_get_object(getThis() TSRMLS_CC);
+	pcobj = z_pimple_closure_p(getThis() TSRMLS_CC);
 
 	fci.function_name = pcobj->factory;
 	args[0] = &arg;
@@ -920,3 +953,4 @@ zend_module_entry pimple_module_entry = {
 #ifdef COMPILE_DL_PIMPLE
 ZEND_GET_MODULE(pimple)
 #endif
+

@@ -14,8 +14,10 @@ var_dump(isset($p['foo']));
 unset($p['foo']);
 try {
 	var_dump($p['foo']);
-	echo "Excpected exception";
-} catch (InvalidArgumentException $e) { }
+	echo "Excpected exception\n";
+} catch (InvalidArgumentException $e) {
+	echo $e->getMessage(), "\n";
+}
 var_dump(isset($p['bar']));
 $p['bar'] = NULL;
 var_dump(isset($p['bar']));
@@ -25,6 +27,7 @@ var_dump(empty($p['bar']));
 int(42)
 NULL
 bool(true)
+Identifier "foo" is not defined.
 bool(false)
 bool(true)
 bool(true)

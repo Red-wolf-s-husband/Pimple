@@ -615,7 +615,7 @@ PHP_METHOD(Pimple, extend)
 {
 	zval *offset = NULL;
 	zval *callable = NULL;
-	zval *pimple_closure_obj = NULL;
+	zval pimple_closure_obj;
 	pimple_bucket_value bucket = {0};
 	pimple_bucket_value *value = NULL;
 	pimple_object *pobj = NULL;
@@ -671,27 +671,26 @@ PHP_METHOD(Pimple, extend)
 	}
 	pimple_free_bucket(&bucket);
 
-	ALLOC_INIT_ZVAL(pimple_closure_obj);
-	object_init_ex(pimple_closure_obj, pimple_closure_ce);
+	object_init_ex(&pimple_closure_obj, pimple_closure_ce);
 
-	pcobj = z_pimple_closure_p(pimple_closure_obj TSRMLS_CC);
+	pcobj = z_pimple_closure_p(&pimple_closure_obj TSRMLS_CC);
 	pcobj->callable = *callable;
 	pcobj->factory  = value->value;
 	pimple_z_addref_p(callable);
 	pimple_z_addref_p(&value->value);
 
 	if (zend_hash_index_exists(&pobj->factories, value->handle_num)) {
-		pimple_zval_to_pimpleval(pimple_closure_obj, &bucket TSRMLS_CC);
+		pimple_zval_to_pimpleval(&pimple_closure_obj, &bucket TSRMLS_CC);
 		zend_hash_index_del(&pobj->factories, value->handle_num);
 		zend_hash_index_update_mem(&pobj->factories, bucket.handle_num, (void *)&bucket, sizeof(pimple_bucket_value));
-		pimple_z_addref_p(pimple_closure_obj);
+		pimple_z_addref_p(&pimple_closure_obj);
 	}
 
 	zval tmp;
-	ZVAL_PTR(&tmp, pimple_closure_obj);
+	ZVAL_PTR(&tmp, &pimple_closure_obj);
 	pimple_object_write_dimension(getThis(), offset, &tmp TSRMLS_CC);
 
-	RETVAL_ZVAL(pimple_closure_obj, 1, 1);
+	RETVAL_ZVAL(&pimple_closure_obj, 1, 1);
 }
 
 PHP_METHOD(Pimple, keys)

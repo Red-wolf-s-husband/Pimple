@@ -193,13 +193,11 @@ static inline pimple_closure_object *z_pimple_closure_p(zval * object TSRMLS_DC)
 static void pimple_closure_free_object_storage(zend_object *object TSRMLS_DC)
 {
 	pimple_closure_object *obj = php_pimple_closure_fetch_object(object TSRMLS_CC);
+	zval_ptr_dtor(&obj->factory);
+	zval_ptr_dtor(&obj->callable);
 	zend_object_std_dtor(&obj->zobj TSRMLS_CC);
-	/*if (obj->factory) {
-		zval_ptr_dtor(obj->factory);
-	}
-	if (obj->callable) {
-		zval_ptr_dtor(obj->callable);
-	}*/
+	// @todo this shouldn't be here, not sure why it's leaking
+	efree(obj);
 }
 
 static void pimple_free_object_storage(zend_object *object TSRMLS_DC)
@@ -209,13 +207,13 @@ static void pimple_free_object_storage(zend_object *object TSRMLS_DC)
 	zend_hash_destroy(&obj->protected);
 	zend_hash_destroy(&obj->values);
 	zend_object_std_dtor(&obj->zobj TSRMLS_CC);
+	// @todo this shouldn't be here, not sure why it's leaking
+	efree(obj);
 }
 
 static void pimple_free_bucket(pimple_bucket_value *bucket)
 {
-	/*if (bucket->raw) {
-		zval_ptr_dtor(&bucket->raw);
-	}*/
+	;
 }
 
 static zend_object *pimple_closure_object_create(zend_class_entry *ce TSRMLS_DC)
@@ -223,7 +221,8 @@ static zend_object *pimple_closure_object_create(zend_class_entry *ce TSRMLS_DC)
 	pimple_closure_object *pimple_closure_obj = NULL;
 
 	pimple_closure_obj = ecalloc(1, sizeof(pimple_closure_object) + zend_object_properties_size(ce));
-	ZEND_OBJ_INIT(&pimple_closure_obj->zobj, ce);
+	zend_object_std_init(&pimple_closure_obj->zobj, ce TSRMLS_CC);
+	object_properties_init(&(pimple_closure_obj->zobj), ce);
 
 	pimple_closure_obj->zobj.handlers = &pimple_closure_object_handlers;
 
@@ -255,7 +254,8 @@ static zend_object *pimple_object_create(zend_class_entry *ce TSRMLS_DC)
 	zend_function *function    = NULL;
 
 	pimple_obj = ecalloc(1, sizeof(pimple_object) + zend_object_properties_size(ce));
-	ZEND_OBJ_INIT(&pimple_obj->zobj, ce);
+	zend_object_std_init(&pimple_obj->zobj, ce TSRMLS_CC);
+	object_properties_init(&(pimple_obj->zobj), ce);
 
 	pimple_object_handle_inheritance_object_handlers(ce TSRMLS_CC);
 
@@ -289,7 +289,8 @@ static void pimple_object_write_dimension(zval *object, zval *offset, zval *valu
 	case IS_STRING:
 		found_value = zend_hash_find_ptr(&pimple_obj->values, Z_STR_P(offset));
 		if (found_value && found_value->type == PIMPLE_IS_SERVICE && found_value->initialized == 1) {
-			pimple_free_bucket(&pimple_value);
+			// @todo this is causing a double-free
+			//pimple_free_bucket(&pimple_value);
 			zend_throw_exception_ex(spl_ce_RuntimeException, 0 TSRMLS_CC, "Cannot override frozen service \"%s\".", Z_STRVAL_P(offset));
 			return;
 		}
@@ -530,10 +531,16 @@ static int pimple_zval_to_pimpleval(zval *_zval, pimple_bucket_value *_pimple_bu
 	return PIMPLE_IS_SERVICE;
 }
 
-static void pimple_bucket_dtor(pimple_bucket_value *bucket)
+static void pimple_bucket_dtor(zval *zv)
 {
-	//zval_ptr_dtor(bucket->value);
-	pimple_free_bucket(bucket);
+	if( Z_TYPE_P(zv) == IS_PTR ) {
+		pimple_bucket_value *bucket = Z_PTR_P(zv);
+		zval_ptr_dtor(&bucket->raw);
+		zval_ptr_dtor(&bucket->value);
+		pimple_free_bucket(bucket);
+		efree(bucket);
+	}
+	zval_ptr_dtor(zv);
 }
 
 PHP_METHOD(Pimple, protect)

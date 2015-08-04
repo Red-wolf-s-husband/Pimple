@@ -96,7 +96,7 @@ static const char sensiolabs_logo[] = "<img src=\"data:image/png;base64,iVBORw0K
 static int pimple_zval_to_pimpleval(zval *_zval, pimple_bucket_value *_pimple_bucket_value TSRMLS_DC);
 static int pimple_zval_is_valid_callback(zval *_zval, pimple_bucket_value *_pimple_bucket_value TSRMLS_DC);
 
-static void pimple_bucket_dtor(pimple_bucket_value *bucket);
+static void pimple_bucket_dtor(zval *bucket);
 static void pimple_free_bucket(pimple_bucket_value *bucket);
 
 static zval *pimple_object_read_dimension(zval *object, zval *offset, int type, zval *rv TSRMLS_DC);

@@ -64,7 +64,7 @@ PHP_METHOD(Pimple, offsetUnset);
 PHP_METHOD(Pimple, offsetGet);
 PHP_METHOD(Pimple, offsetExists);
 
-PHP_METHOD(PimpleClosure, invoker);
+PHP_METHOD(PimpleClosure, __invoke);
 
 typedef struct _pimple_bucket_value {
 	zval value; /* Must be the first element */
